@@ -1,5 +1,6 @@
-![nginx latest](https://img.shields.io/badge/nginx-latest-brightgreen.svg)[![build status](https://gitlab.com/adi90x/rancher-active-proxy/badges/master/build.svg)](https://gitlab.com/adi90x/rancher-active-proxy/commits/master)  ![License MIT](https://img.shields.io/badge/license-MIT-blue.svg)   [![Docker Pulls](https://img.shields.io/docker/pulls/adi90x/rancher-active-proxy.svg)](https://hub.docker.com/r/adi90x/rancher-active-proxy/)  [![Docker Automated buil](https://img.shields.io/docker/automated/adi90x/rancher-active-proxy.svg)](https://hub.docker.com/r/adi90x/rancher-active-proxy/)
+![nginx latest](https://img.shields.io/badge/nginx-latest-brightgreen.svg)[![build status](https://img.shields.io/gitlab/pipeline/adi90x/rancher-active-proxy/master)](https://gitlab.com/adi90x/rancher-active-proxy)  ![License MIT](https://img.shields.io/badge/license-MIT-blue.svg)   [![Docker Pulls](https://img.shields.io/docker/pulls/adi90x/rancher-active-proxy.svg)](https://hub.docker.com/r/adi90x/rancher-active-proxy/)  [![Docker Automated buil](https://img.shields.io/docker/automated/adi90x/rancher-active-proxy.svg)](https://hub.docker.com/r/adi90x/rancher-active-proxy/)
 
+If you look for a Kubernetes version : Have a look to [Kube Active Proxy](https://github.com/adi90x/kube-active-proxy)
 
 ## Rancher Active Proxy
 
@@ -29,7 +30,7 @@ Then start any containers you want proxied with a label `rap.host=subdomain.youd
 
     $ docker run -l rap.host=foo.bar.com  ...
 
-The containers being proxied must [expose](https://docs.docker.com/reference/run/#expose-incoming-ports) the port to be proxied, either by using the `EXPOSE` directive in their `Dockerfile` or by using the `--expose` flag to `docker run` or `docker create`.
+The containers being proxied must [expose](https://docs.docker.com/engine/reference/run/#expose-incoming-ports) the port to be proxied, either by using the `EXPOSE` directive in their `Dockerfile` or by using the `--expose` flag to `docker run` or `docker create`.
 
 Provided your DNS is setup to forward foo.bar.com to the a host running `rancher-active-proxy`, the request will be routed to a container with the `rap.host` label set.
 
@@ -66,6 +67,7 @@ Provided your DNS is setup to forward foo.bar.com to the a host running `rancher
 | `DEFAULT_PORT` 	 | Default port use for containers ( Default : `80` )
 | `SPECIFIC_HOST` 	 | Limit RAP to only containers of a specific host name
 | `RAP_NAME` 	     | If specify RAP will only publish service with `rap.rap_name = RAP_NAME`
+| `ACME_INTERNAL` 	 | Enable passing ACME request to another RAP instance ( check PR #48)
 
 #### Quick Summary of interesting volume to mount.
 
