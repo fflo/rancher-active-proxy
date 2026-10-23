@@ -1,18 +1,20 @@
+# Rancher v1 stack definition (compose v2 format as consumed by rancher-compose).
 version: '2'
 services:
   Proxy:
-    image: adi90x/rancher-active-proxy
+    image: ghcr.io/fflo/rancher-active-proxy:latest
     environment:
       DEFAULT_HOST: "Default Domain ex: bar.com"
       DEFAULT_EMAIL: "Default Email ex: foo@bar.com"
-    stdin_open: true
+      # CRON: "0 2 * * *"
+      # TZ: Europe/Berlin
     volumes:
     - /local/path/data/nginx/htpasswd:/etc/nginx/htpasswd
     - /local/path/data/nginx/vhost.d:/etc/nginx/vhost.d
     - /local/path/data/nginx/letsencrypt:/etc/letsencrypt
-    tty: true
     ports:
     - 80:80/tcp
     - 443:443/tcp
     labels:
       io.rancher.container.pull_image: always
+      io.rancher.scheduler.global: 'true'

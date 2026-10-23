@@ -1,5 +1,10 @@
 .git
+.github
 .dockerignore
 README.md
+CHANGELOG
+LICENSE
+logo.png
 test
-.gitlab-ci.yml
+templates
+docker-compose.yml

@@ -1,86 +1,64 @@
 #!/bin/bash
-
+# Issue (or expand) Let's Encrypt certificates for every rap.le_host listed in
+# /app/letsencrypt.conf. Runs at start-up, whenever rancher-gen regenerates the
+# host list, and after `certbot renew` from cron. Idempotent: certbot keeps
+# certificates that are not due for renewal, so this never burns rate limits.
+set -u
 source /app/functions.sh
 
-update_certs() {
+: "${LETSENCRYPT_DELAY:=10}"   # seconds to wait for nginx/Rancher routing to settle
+ACME_PROD="https://acme-v02.api.letsencrypt.org/directory"
+ACME_STAGING="https://acme-staging-v02.api.letsencrypt.org/directory"
 
-    [[ ! -s /app/letsencrypt.conf ]] && return
-    
-    # Load relevant container settings
-    unset LETSENCRYPT_CONTAINERS
-    source /app/letsencrypt.conf
-    
-    [[ ! -n "$LETSENCRYPT_CONTAINERS" ]] && return	
+[[ -s "$LE_CONF" ]] || exit 0
 
-    for cid in "${LETSENCRYPT_CONTAINERS[@]}"; do
+exec 9>"$LE_LOCK"
+if ! flock -w 600 9; then
+    err "another certificate job is still running, giving up"
+    exit 1
+fi
 
-		# Derive host and email variable names
-        host_varname="LETSENCRYPT_${cid}_HOST"
+issue_cert() {
+    local id="$1" email="$2" test="$3"; shift 3
+    local -a doms=("$@") dargs=()
+    local certname="${doms[0]}" server dom
+    local -a extra=()
 
-        # Array variable indirection hack: http://stackoverflow.com/a/25880676/350221
-        hosts_array=$host_varname[@]
-        email_varname="LETSENCRYPT_${cid}_EMAIL"
-        test_certificate_varname="LETSENCRYPT_${cid}_TEST"
+    [[ $test == true ]] && server="$ACME_STAGING" || server="$ACME_PROD"
+    [[ ${DEBUG:-false} == true ]] && extra+=(-v)
 
-        if [[ $(lc "${!test_certificate_varname:-}") == true ]]; then
-            acme_server="https://acme-staging-v02.api.letsencrypt.org/directory"
-        else
-            acme_server="https://acme-v02.api.letsencrypt.org/directory"
+    # Switching between staging and production: drop the old lineage so certbot
+    # does not try to renew a staging certificate against production (or vice versa).
+    local renewal_conf="${LE_DIR}/renewal/${certname}.conf"
+    if [[ -f "$renewal_conf" ]]; then
+        local current_server
+        current_server="$(sed -n 's/^server *= *//p' "$renewal_conf" | head -n1)"
+        if [[ -n "$current_server" && "$current_server" != "$server" ]]; then
+            log "ACME server changed for $certname, discarding old certificate"
+            certbot delete --non-interactive --cert-name "$certname" >/dev/null 2>&1 || true
+            for dom in "${doms[@]}"; do rm -f "${CERT_DIR}/${dom}".{crt,key,dhparam.pem}; done
         fi
-        
-        sleep 30
-        echo "Sleep 30s before Using Acme server $acme_server"
-        
-        debug=""
-        [[ $DEBUG == true ]] && debug+=" -v"
+    fi
 
-        hosts_array_expanded=("${!hosts_array}")
-
-        # First domain will be our base domain
-        base_domain="${hosts_array_expanded[0]}"
-		
-		#Check if cert switch from staging to real and vice versa
-		if [[ -f "/etc/letsencrypt/renewal/$base_domain.conf" ]]; then
-			actual_server=$(grep server /etc/letsencrypt/renewal/$base_domain.conf | cut -f3 -d ' ')
-			if [[ $acme_server == $actual_server ]]; then
-				force_renewal=""
-			else
-				
-				force_renewal="--break-my-certs --force-renewal"
-				sed -i  's|'"$actual_server"'|'"$acme_server"'|g' "/etc/letsencrypt/renewal/$base_domain.conf"
-			fi
-		fi
-	    
-	    # Split domain by ';'  create all config needed and create domain parameter for certbot 
-	    listdomain=${base_domain//;/$'\n'}
-	    for dom in $listdomain; do
-        # Add location configuration for the domain
-		add_location_configuration "$dom"
-		# Create a domain parameter for certbot
-		domainparam="$domainparam -d $dom "
-        done
-	
-		#Reload Nginx once location added
-		reload_nginx
-
-		echo "Creating/renewal $base_domain certificates... (${hosts_array_expanded[*]})"
-
-		certbot certonly -t --agree-tos $debug $force_renewal \
-			-m ${!email_varname} -n  $domainparam \
-			--server $acme_server --expand \
-			--webroot -w /usr/share/nginx/html 
-	    
-		echo " "
-		#Setting the cert for all domain it was created for !
-		domarray=( $listdomain )
-		certname=${domarray[0]}
-		for dom in $listdomain; do
-		setup_certs $dom $certname
-		done
-		domainparam=""
+    for dom in "${doms[@]}"; do
+        add_location_configuration "$dom"
+        dargs+=(-d "$dom")
     done
-	
-    reload_nginx
+
+    log "Creating/renewing certificate '$certname' (${doms[*]}) via $server"
+    if certbot certonly --non-interactive --agree-tos --no-eff-email \
+            --keep-until-expiring --expand \
+            --cert-name "$certname" -m "$email" "${dargs[@]}" \
+            --server "$server" --preferred-challenges http \
+            --webroot -w "$WEBROOT" "${extra[@]}"; then
+        for dom in "${doms[@]}"; do setup_certs "$dom" "$certname"; done
+    else
+        err "certbot failed for '$certname'; nginx keeps serving the previous certificate (if any)"
+    fi
 }
 
-update_certs
+sleep "$LETSENCRYPT_DELAY"
+# Make sure every vhost already serves /.well-known/acme-challenge/ before certbot runs.
+reload_nginx
+each_le_record issue_cert
+reload_nginx

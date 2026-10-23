@@ -1,5 +1,29 @@
 ### Last Change ###
 
+23/10/26 : v1.0.0 - Maintenance release: rebuild from source and harden.
+           * rancher-gen source moved in-tree (rancher-gen/), built with Go modules; the GitLab
+             artifact download that the old Dockerfile relied on no longer exists.
+           * Multi-stage Dockerfile: pinned nginx:1.30-alpine, forego and rancher-gen compiled from
+             pinned modules, no unverified binary downloads, OCI labels, HEALTHCHECK, nano/unzip/wget dropped.
+           * Label values are validated (isHostname/isPort/isSafeToken) before being written into the
+             nginx config: a service label can no longer inject nginx directives.
+           * Let's Encrypt host list is plain tab-separated data parsed by letsencrypt.sh instead of a
+             bash file that was `source`d (label values could execute as shell code).
+           * TLS: Mozilla intermediate profile (AEAD ciphers only, no CBC/SHA1/non-PFS), http2 on,
+             ssl_prefer_server_ciphers off, X25519 curves, HSTS tunable via rap.hsts.
+           * Self-signed default certificate for unknown host names; server_tokens off by default;
+             RFC 7919 ffdhe2048 DH group instead of a generated -dsaparam group.
+           * certbot: --keep-until-expiring/--expand per cert, `certbot renew` from cron, staging<->prod
+             switch handled by deleting the lineage, job lock, no placeholder e-mail, real error logging.
+           * http->https redirect uses the configured host instead of the client-supplied Host header.
+           * /app/remove validates its argument (no more path traversal / glob) and uses certbot delete.
+           * rancher-gen: Sirupsen->sirupsen import, io/ioutil removed, two printf bugs fixed,
+             RANCHER_METADATA_URL override, flag parsing moved out of init() so `go test` works.
+           * GitHub Actions workflow (lint, build, smoke test, Trivy scan, weekly rebuild) replaces the
+             Docker Hub hook and GitLab CI; catalog template requires a real DEFAULT_EMAIL.
+           * Fixed: `rap.host=www.example.com=>8080` (port only) produced `proxy_pass 8080://...`.
+
+
 28/02/17 : v0.9.4 - Add a way to specify which services should be publish by RAP
 28/02/17 : v0.9.3 - Add Let's Encrypt Bypass to enable standalone LE to work behind RAP.
 26/01/17 : v0.9.2 - Avoid error if Let's Encrypt conf is empty on startup.

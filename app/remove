@@ -1,21 +1,33 @@
 #!/bin/bash
+# Remove a Let's Encrypt certificate (and nginx links) for one host, or
+# everything with '*'. Usage: docker exec <proxy> /app/remove <certname|*>
+set -u
+source /app/functions.sh
 
-dom="${1:-}"
+name="${1:-}"
 
-#Check if something has been pass to the script
-if [ -z "$dom" ]; then
-        echo "Nothing to delete has been pass to the script. You must run it with an argument ( use '*' to delete everything ) "
-else
-# Delete all certificates that match regex : input*
-rm -rf /etc/letsencrypt/archive/$dom*
-rm -rf /etc/letsencrypt/live/$dom*
-rm -rf /etc/letsencrypt/renewal/$dom*
+if [[ -z "$name" ]]; then
+    echo "Usage: $0 <certificate name | *>" >&2
+    echo "Nothing to delete. Pass a certificate name (the first rap.le_host of the service) or '*' for all." >&2
+    exit 1
 fi
 
-#Rerun rancher-gen to recreate a correct configuration
+if [[ "$name" == "*" ]]; then
+    log "Deleting ALL certificates"
+    rm -rf "${LE_DIR}/archive"/* "${LE_DIR}/live"/* "${LE_DIR}/renewal"/*
+    find "$CERT_DIR" -maxdepth 1 -type l ! -name 'default.*' -delete
+elif is_safe_name "$name"; then
+    log "Deleting certificate '$name'"
+    certbot delete --non-interactive --cert-name "$name" 2>/dev/null \
+        || rm -rf "${LE_DIR}/archive/${name}" "${LE_DIR}/live/${name}" "${LE_DIR}/renewal/${name}.conf"
+    # Drop every nginx link that pointed at this lineage (plus the matching dhparam links).
+    while IFS= read -r link; do
+        rm -f "$link" "${link%.*}.dhparam.pem"
+    done < <(find "$CERT_DIR" -maxdepth 1 -type l -lname "${LE_DIR}/live/${name}/*")
+else
+    err "'$name' is not a valid certificate name"
+    exit 1
+fi
 
-#Delete file to avoid looping problem
-rm -f /etc/nginx/conf.d/default.conf
-
-#Rerun rancher-gen to recreate a new nginx config file 
-rancher-gen --onetime /app/nginx.tmpl /etc/nginx/conf.d/default.conf
+# Regenerate the nginx configuration without the deleted certificate(s).
+reload_nginx

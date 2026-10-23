@@ -1,4 +1,11 @@
-![nginx latest](https://img.shields.io/badge/nginx-latest-brightgreen.svg)[![build status](https://img.shields.io/gitlab/pipeline/adi90x/rancher-active-proxy/master)](https://gitlab.com/adi90x/rancher-active-proxy)  ![License MIT](https://img.shields.io/badge/license-MIT-blue.svg)   [![Docker Pulls](https://img.shields.io/docker/pulls/adi90x/rancher-active-proxy.svg)](https://hub.docker.com/r/adi90x/rancher-active-proxy/)  [![Docker Automated buil](https://img.shields.io/docker/automated/adi90x/rancher-active-proxy.svg)](https://hub.docker.com/r/adi90x/rancher-active-proxy/)
+[![build](https://github.com/fflo/rancher-active-proxy/actions/workflows/build.yml/badge.svg)](https://github.com/fflo/rancher-active-proxy/actions/workflows/build.yml) ![nginx 1.30](https://img.shields.io/badge/nginx-1.30-brightgreen.svg) ![License MIT](https://img.shields.io/badge/license-MIT-blue.svg)
+
+> **2026 maintenance fork.** This fork rebuilds the image from source (the upstream
+> `ghcr.io/fflo/rancher-active-proxy` image and its GitLab build artifacts are no longer
+> maintained), pins every component, and hardens the generated nginx configuration.
+> See [Building and upgrading](#building-and-upgrading) and the [CHANGELOG](CHANGELOG).
+> Rancher v1 itself is end-of-life; keep the proxy host patched and treat it as the
+> only thing exposed to the internet.
 
 If you look for a Kubernetes version : Have a look to [Kube Active Proxy](https://github.com/adi90x/kube-active-proxy)
 
@@ -8,15 +15,15 @@ Rancher Active Proxy is an all-in-one reverse proxy for [Rancher](http://rancher
 
 Rancher Active Proxy is based on the excellent idea of [jwilder/nginx-proxy](https://github.com/jwilder/nginx-proxy).
 
-Rancher Active Proxy replace docker-gen by Rancher-gen-rap [adi90x/rancher-gen-rap](https://github.com/adi90x/rancher-gen-rap) ( a fork of the also excellent [janeczku/go-rancher-gen](https://github.com/janeczku/go-rancher-gen) adding some more function )
+Rancher Active Proxy replaces docker-gen with rancher-gen (a fork of the also excellent [janeczku/go-rancher-gen](https://github.com/janeczku/go-rancher-gen) adding some more functions). Its source now lives in [`rancher-gen/`](rancher-gen/) in this repository and is compiled as part of the image build.
 
 Rancher Active Proxy use label instead of environmental value.
 
-I would recommend to use latest image from DockerHub or you can use tag versions. Keep in mind that branch are mostly development features and could not work as expected.
+Images are published to `ghcr.io/fflo/rancher-active-proxy` (`latest` from master, `vX.Y.Z` from tags) and rebuilt weekly so nginx and certbot security updates are picked up.
 
 ### Easy Setup with catalog
 
-Add `https://github.com/adi90x/rancher-active-proxy.git` to your custom catalog list( Rancher > Admin > Settings ).
+Add `https://github.com/fflo/rancher-active-proxy.git` to your custom catalog list( Rancher > Admin > Settings ).
 
 Then go to catalog and install Rancher Active Proxy !
 
@@ -24,7 +31,7 @@ Then go to catalog and install Rancher Active Proxy !
 
 Minimal Params To run it:
 
-    $ docker run -d -p 80:80  adi90x/rancher-active-proxy
+    $ docker run -d -p 80:80 -p 443:443 -v rap-letsencrypt:/etc/letsencrypt ghcr.io/fflo/rancher-active-proxy
 
 Then start any containers you want proxied with a label `rap.host=subdomain.youdomain.com`
 
@@ -45,6 +52,7 @@ Provided your DNS is setup to forward foo.bar.com to the a host running `rancher
 | `rap.timeout`              | Timeout for reading from this container ( in seconds ). Default : nginx default (60s)
 | `rap.cert_name`            | Certificate name to use for the virtual host. Default `rap.host`
 | `rap.https_method`         | Https method (redirect, noredirect, nohttps). Default : `redirect`
+| `rap.hsts`                 | HSTS header on https hosts: `off`, `includeSubDomains` or `preload`. Default : `max-age=31536000` only
 | `rap.le_host`              | Certificate to create/renew with Letsencrypt
 | `rap.le_email`             | Email to use for Letsencrypt
 | `rap.le_test  `            | Set to true to use stagging letsencrypt server
@@ -55,6 +63,12 @@ Provided your DNS is setup to forward foo.bar.com to the a host running `rancher
 | `rap.client_max_body_size` | Enable to specify the client_max_body_size directive per container
 | `rap.rap_name`             | If `RAP_NAME` is specified for a RAP instance only container with label value matching `RAP_NAME` value will be publish
 
+Label values are validated before they are written into the nginx configuration:
+hostnames must be valid DNS names, ports must be numeric, and free-text values
+(`rap.proto`, `rap.cert_name`, `rap.client_max_body_size`, ...) may not contain
+whitespace, quotes, `;`, `{`, `}` or `#`. A service with an invalid value is skipped
+(with a comment in the generated config) instead of breaking the proxy for everyone.
+
 #### Summary of environment variable available for Rancher Active Proxy.
 
 |       Label        |            Description         |
@@ -62,12 +76,14 @@ Provided your DNS is setup to forward foo.bar.com to the a host running `rancher
 | `DEBUG`            | Set to `true` to enable more output. Default : `False`
 | `CRON`             | Cron like expression to define when certs are renew. Default : `0 2 * * *`
 | `DEFAULT_HOST`     | Default Nginx host.
-| `DEFAULT_EMAIL`    | Default Email for Letsencrypt.
+| `DEFAULT_EMAIL`    | Default Email for Letsencrypt. Must be a real address; hosts without `rap.le_email` are skipped if it is missing.
 | `RAP_DEBUG` 		 | Define Rancher-Gen-Rap verbosity (Valid values: "debug", "info", "warn", and "error"). Default: `info`
 | `DEFAULT_PORT` 	 | Default port use for containers ( Default : `80` )
 | `SPECIFIC_HOST` 	 | Limit RAP to only containers of a specific host name
 | `RAP_NAME` 	     | If specify RAP will only publish service with `rap.rap_name = RAP_NAME`
 | `ACME_INTERNAL` 	 | Enable passing ACME request to another RAP instance ( check PR #48)
+| `LETSENCRYPT_DELAY` | Seconds to wait before contacting Let's Encrypt after the host list changed ( Default : `10` )
+| `TZ`               | Time zone for cron and log timestamps ( Default : `UTC` )
 
 #### Quick Summary of interesting volume to mount.
 
@@ -143,7 +159,7 @@ This would yield 3 different server/upstream configurations...
 
 If needed you can use Rancher-Active-Proxy to listen for different ports.
 
-`docker run -d -p 8081:8081 -p 81:81  adi90x/rancher-active-proxy`
+`docker run -d -p 8081:8081 -p 81:81  ghcr.io/fflo/rancher-active-proxy`
 
 In this case, you can specify on which port Rancher Active Proxy should listen for a specific hostname :
 
@@ -160,21 +176,20 @@ If you are not using port `80` and `443` at all you won't be able to use Let's E
 
 Using environmental value `SPECIFIC_HOST` you can limit Rancher Active Proxy to containers running on a single host.
 
-Just start Rancher Active Proxy like that : `docker run -d -p 80:80 -e SPECIFIC_HOST=Hostnameofthehost adi90x/rancher-active-proxy`
+Just start Rancher Active Proxy like that : `docker run -d -p 80:80 -e SPECIFIC_HOST=Hostnameofthehost ghcr.io/fflo/rancher-active-proxy`
 
 ### Remove Script
 
 Rancher Active Proxy provides an easy script to revoke/delete a certificate.
 
-You can run it : `docker run adi90x/rancher-active-proxy /app/remove DomainCertToRemove`
+Run it inside the running proxy container: `docker exec <proxy container> /app/remove admin.foo.com`
 
-Script is adding '*' at the end of the command therefore `/app/remove foo` will delete `foo.bar.com , foo.bar.org, foo.bar2.com ..`
-
-_Special attention_: If you are using it with SAN certificates you need to be careful and run it for each domain in the SAN certificate.
+The argument is the certificate name, i.e. the first host of the `rap.le_host` label. For a SAN
+certificate (`admin.foo.com;api.foo.com`) one call removes the whole certificate and every
+nginx link that pointed at it. `/app/remove '*'` deletes all certificates. Names are no longer
+treated as prefixes/globs.
 
 Do not forget to delete the label on the container before using that script or it will be recreated on next update.
-
-If you are starting it with Rancher do not forget to set Auto Restart : Never (Start Once)
 
 ### Per-host server configuration
 
@@ -183,7 +198,7 @@ The file should use the suffix `_server`.
 
 For example, if you have a virtual host named `app.example.com` and you have configured a proxy_cache `my-cache` in another custom file, you could tell it to use a proxy cache as follows:
 
-    $ docker run -d -p 80:80 -p 443:443 -v /path/to/vhost.d:/etc/nginx/vhost.d:ro adi90x/rancher-active-proxy
+    $ docker run -d -p 80:80 -p 443:443 -v /path/to/vhost.d:/etc/nginx/vhost.d:ro ghcr.io/fflo/rancher-active-proxy
 
 You should therefore have a file `app.example.com_server` in the `/etc/nginx/vhost.d` folder that contains the whole server block you want to use :
 
@@ -240,7 +255,7 @@ Your backend container should than listen on a port rather than a socket and exp
 
 To set the default host for nginx use the env var `DEFAULT_HOST=foo.bar.com` for example :
 
-    $ docker run -d -p 80:80 -e DEFAULT_HOST=foo.bar.com adi90x/rancher-active-proxy
+    $ docker run -d -p 80:80 -e DEFAULT_HOST=foo.bar.com ghcr.io/fflo/rancher-active-proxy
 
 ### SSL Support
 
@@ -249,7 +264,7 @@ or optionally specifying a cert name (for SNI) as an environment variable.
 
 To enable SSL:
 
-    $ docker run -d -p 80:80 -p 443:443 -v /path/to/certs:/etc/nginx/certs  adi90x/rancher-active-proxy
+    $ docker run -d -p 80:80 -p 443:443 -v /path/to/certs:/etc/nginx/certs  ghcr.io/fflo/rancher-active-proxy
 
 The contents of `/path/to/certs` should contain the certificates and private keys for any virtual
 hosts in use.  The certificate and keys should be named after the virtual host with a `.crt` and
@@ -262,7 +277,9 @@ By default, Docker is not able to mount directories on the host machine to conta
 
 ### Diffie-Hellman Groups
 
-If you have Diffie-Hellman groups enabled, the files should be named after the virtual host with a
+Let's Encrypt hosts use the RFC 7919 `ffdhe2048` group, installed as `/etc/letsencrypt/dhparam.pem`
+on first start (replace that file with your own parameters if you prefer; it is never overwritten).
+For manually provided certificates, the file should be named after the virtual host with a
 `dhparam` suffix and `.pem` extension. For example, a container with `rap.host=foo.bar.com`
 should have a `foo.bar.com.dhparam.pem` file in the certs directory.
 
@@ -280,10 +297,13 @@ and `rap.cert_name=shared` will then use this shared cert.
 
 ### How SSL Support Works
 
-The SSL cipher configuration is based on [mozilla nginx intermediate profile](https://wiki.mozilla.org/Security/Server_Side_TLS#Nginx) which
-should provide compatibility with clients back to Firefox 1, Chrome 1, IE 7, Opera 5, Safari 1,
-Windows XP IE8, Android 2.3, Java 7.  The configuration also enables HSTS, and SSL
-session caches.
+The TLS configuration follows the current [Mozilla "intermediate" profile](https://ssl-config.mozilla.org/#server=nginx&config=intermediate):
+TLS 1.2 and 1.3 only, AEAD ciphers with forward secrecy, client cipher preference, HTTP/2,
+session cache without session tickets, and HSTS (tunable per host with `rap.hsts`).
+Requests for a host name that is not configured (or a bare IP) are answered with a
+generated self-signed certificate and a `503`, so a tenant's certificate is never presented
+for a foreign host name. Place your own `default.crt`/`default.key` in `/etc/nginx/certs` to
+override it. `server_tokens` is `off` by default.
 
 The default behavior for the proxy when port 80 and 443 are exposed is as follows:
 
@@ -291,10 +311,8 @@ The default behavior for the proxy when port 80 and 443 are exposed is as follow
 is always preferred when available.
 * If the container does not have a usable cert, a 503 will be returned.
 
-Note that in the latter case, a browser may get an connection error as no certificate is available
-to establish a connection.  A self-signed or generic cert named `default.crt` and `default.key`
-will allow a client browser to make a SSL connection (likely w/ a warning) and subsequently receive
-a 503.
+In the latter case the self-signed default certificate is used, so the browser gets a certificate
+warning followed by a 503 instead of a connection error.
 
 To serve traffic in both SSL and non-SSL modes without redirecting to SSL, you can include the
 label  `rap.https_method=noredirect` (the default is `rap.https_method=redirect`).  You can also
@@ -314,7 +332,7 @@ In order to be able to secure your virtual host, you have to create a file named
 $ docker run -d -p 80:80 -p 443:443 \
     -v /path/to/htpasswd:/etc/nginx/htpasswd \
     -v /path/to/certs:/etc/nginx/certs \
-    adi90x/rancher-active-proxy
+    ghcr.io/fflo/rancher-active-proxy
 ```
 
 You'll need apache2-utils on the machine where you plan to create the htpasswd file.
@@ -360,7 +378,7 @@ To add settings on a proxy-wide basis, add your configuration file under `/etc/n
 This can be done in a derived image by creating the file in a `RUN` command or by `COPY`ing the file into `conf.d`:
 
 ```Dockerfile
-FROM adi90x/rancher-active-proxy
+FROM ghcr.io/fflo/rancher-active-proxy
 RUN { \
       echo 'server_tokens off;'; \
       echo 'client_max_body_size 100m;'; \
@@ -369,7 +387,7 @@ RUN { \
 
 Or it can be done by mounting in your custom configuration in your `docker run` command:
 
-    $ docker run -d -p 80:80 -p 443:443 -v /path/to/my_proxy.conf:/etc/nginx/conf.d/my_proxy.conf:ro adi90x/rancher-active-proxy
+    $ docker run -d -p 80:80 -p 443:443 -v /path/to/my_proxy.conf:/etc/nginx/conf.d/my_proxy.conf:ro ghcr.io/fflo/rancher-active-proxy
 
 ### Per-VIRTUAL_HOST
 
@@ -379,7 +397,7 @@ In order to allow virtual hosts to be dynamically configured as backends are add
 
 For example, if you have a virtual host named `app.example.com`, you could provide a custom configuration for that host as follows:
 
-    $ docker run -d -p 80:80 -p 443:443 -v /path/to/vhost.d:/etc/nginx/vhost.d:ro adi90x/rancher-active-proxy
+    $ docker run -d -p 80:80 -p 443:443 -v /path/to/vhost.d:/etc/nginx/vhost.d:ro ghcr.io/fflo/rancher-active-proxy
     $ { echo 'server_tokens off;'; echo 'client_max_body_size 100m;'; } > /path/to/vhost.d/app.example.com
 
 If you are using multiple hostnames for a single container (e.g. `rap.host=example.com,www.example.com`), the virtual host configuration file must exist for each hostname. If you would like to use the same configuration for multiple virtual host names, you can use a symlink:
@@ -399,7 +417,7 @@ just like the previous section except with the suffix `_location`.
 
 For example, if you have a virtual host named `app.example.com` and you have configured a proxy_cache `my-cache` in another custom file, you could tell it to use a proxy cache as follows:
 
-    $ docker run -d -p 80:80 -p 443:443 -v /path/to/vhost.d:/etc/nginx/vhost.d:ro adi90x/rancher-active-proxy
+    $ docker run -d -p 80:80 -p 443:443 -v /path/to/vhost.d:/etc/nginx/vhost.d:ro ghcr.io/fflo/rancher-active-proxy
     $ { echo 'proxy_cache my-cache;'; echo 'proxy_cache_valid  200 302  60m;'; echo 'proxy_cache_valid  404 1m;' } > /path/to/vhost.d/app.example.com_location
 
 If you are using multiple hostnames for a single container (e.g. `rap.host=example.com,www.example.com`), the virtual host configuration file must exist for each hostname. If you would like to use the same configuration for multiple virtual host names, you can use a symlink:
@@ -412,8 +430,30 @@ If you are using multiple hostnames for a single container (e.g. `rap.host=examp
 If you want most of your virtual hosts to use a default single `location` block configuration and then override on a few specific ones, add those settings to the `/etc/nginx/vhost.d/default_location` file. This file
 will be used on any virtual host which does not have a `/etc/nginx/vhost.d/{rap.host}` file associated with it.
 
+## Building and upgrading
+
+```sh
+docker build -t rancher-active-proxy:local .
+```
+
+The build compiles `rancher-gen` and `forego` from pinned, checksum-verified Go modules in a
+builder stage and copies the static binaries into `nginx:1.30-alpine`. Nothing is downloaded
+from GitLab or GitHub release pages at build time. Tags are built by GitHub Actions
+(`.github/workflows/build.yml`), smoke-tested and scanned with Trivy.
+
+Upgrading an existing stack from the `adi90x` image:
+
+1. Keep your `/etc/letsencrypt`, `/etc/nginx/vhost.d` and `/etc/nginx/htpasswd` volumes; they are
+   used unchanged. Existing certificates are re-linked from the certbot lineages on start.
+2. Set `DEFAULT_EMAIL` to a real address (the old `foo@bar.com` placeholder is rejected).
+3. The `remove` script now takes an exact certificate name instead of a prefix.
+4. `rap.timeout` must be a plain number of seconds and the port/proto in `rap.host=...=>proto:port`
+   are validated; check the generated `/etc/nginx/conf.d/default.conf` for `# skipped` comments.
+5. nginx 1.30 serves HTTP/2 via `http2 on;`; if you ship your own `vhost.d/*_server` blocks, drop the
+   deprecated `listen ... http2` form.
+
 ## Contributing
 
 Do not hesitate to send issues or pull requests !
 
-Automated Gitlab CI is used to build Rancher Active Proxy therefore send any pull request/issues to [Rancher Active Proxy on Gitlab.com](https://gitlab.com/adi90x/rancher-active-proxy/)
+Automated Gitlab CI is used to build Rancher Active Proxy therefore send any pull request/issues to [Rancher Active Proxy on Gitlab.com](https://gitlab.com/ghcr.io/fflo/rancher-active-proxy/)
