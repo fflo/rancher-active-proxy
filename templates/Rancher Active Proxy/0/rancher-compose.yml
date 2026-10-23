@@ -21,6 +21,18 @@
       label: "Auto renew cron like setup"
       default: "0 2 * * *"
       type: string
+    - variable: RATE_LIMIT
+      label: "Requests per second allowed per client IP (off to disable)"
+      default: "30r/s"
+      type: string
+    - variable: WAF
+      label: "Web application firewall (ModSecurity + OWASP CRS): on, detect (log only) or off"
+      default: "detect"
+      type: enum
+      options:
+        - detect
+        - "on"
+        - "off"
     - variable: DEBUG
       label: "Set to true to enable debug"
       default: "False"

@@ -10,11 +10,13 @@ on:
 
 permissions:
   contents: read
-  packages: write
   security-events: write
 
+# Published to Docker Hub. Create an access token at hub.docker.com (Account settings ->
+# Personal access tokens, "Read & Write") and store it in the repository secrets as
+# DOCKERHUB_TOKEN together with DOCKERHUB_USERNAME.
 env:
-  IMAGE: ghcr.io/${{ github.repository }}
+  IMAGE: docker.io/fflo/rancher-active-proxy
 
 jobs:
   lint:
@@ -41,13 +43,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
-      - name: Log in to GHCR
+      - name: Log in to Docker Hub
         if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
       - id: meta
         uses: docker/metadata-action@v5
         with:
@@ -61,6 +62,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          platforms: linux/amd64
           push: ${{ github.event_name != 'pull_request' }}
           load: ${{ github.event_name == 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}

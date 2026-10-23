@@ -24,6 +24,7 @@ check_writable_directory "$WEBROOT"
 
 ensure_dhparam
 ensure_default_cert
+configure_waf
 
 if [[ -n "${DEFAULT_EMAIL:-}" ]] && ! is_email "$DEFAULT_EMAIL"; then
     err "DEFAULT_EMAIL '$DEFAULT_EMAIL' is not a valid e-mail address; certificates without rap.le_email will fail"
@@ -34,6 +35,7 @@ fi
 # it starts, and its notify command issues whatever is still missing.
 rm -f "$LE_CONF"
 relink_existing_lineages
+remove_all_location_configurations
 
 # Never leave the image's default site around.
 rm -f /etc/nginx/conf.d/default.conf

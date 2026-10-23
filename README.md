@@ -1,7 +1,7 @@
 [![build](https://github.com/fflo/rancher-active-proxy/actions/workflows/build.yml/badge.svg)](https://github.com/fflo/rancher-active-proxy/actions/workflows/build.yml) ![nginx 1.30](https://img.shields.io/badge/nginx-1.30-brightgreen.svg) ![License MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 
 > **2026 maintenance fork.** This fork rebuilds the image from source (the upstream
-> `ghcr.io/fflo/rancher-active-proxy` image and its GitLab build artifacts are no longer
+> `fflo/rancher-active-proxy` image and its GitLab build artifacts are no longer
 > maintained), pins every component, and hardens the generated nginx configuration.
 > See [Building and upgrading](#building-and-upgrading) and the [CHANGELOG](CHANGELOG).
 > Rancher v1 itself is end-of-life; keep the proxy host patched and treat it as the
@@ -19,7 +19,7 @@ Rancher Active Proxy replaces docker-gen with rancher-gen (a fork of the also ex
 
 Rancher Active Proxy use label instead of environmental value.
 
-Images are published to `ghcr.io/fflo/rancher-active-proxy` (`latest` from master, `vX.Y.Z` from tags) and rebuilt weekly so nginx and certbot security updates are picked up.
+Images are published to Docker Hub as [`fflo/rancher-active-proxy`](https://hub.docker.com/r/fflo/rancher-active-proxy) (`latest` from master, `vX.Y.Z` from tags) and rebuilt weekly so nginx, certbot and ModSecurity security updates are picked up.
 
 ### Easy Setup with catalog
 
@@ -31,7 +31,7 @@ Then go to catalog and install Rancher Active Proxy !
 
 Minimal Params To run it:
 
-    $ docker run -d -p 80:80 -p 443:443 -v rap-letsencrypt:/etc/letsencrypt ghcr.io/fflo/rancher-active-proxy
+    $ docker run -d -p 80:80 -p 443:443 -v rap-letsencrypt:/etc/letsencrypt fflo/rancher-active-proxy
 
 Then start any containers you want proxied with a label `rap.host=subdomain.youdomain.com`
 
@@ -62,6 +62,11 @@ Provided your DNS is setup to forward foo.bar.com to the a host running `rancher
 | `rap.server_tokens`    	 | Enable to specify the server_token value per container
 | `rap.client_max_body_size` | Enable to specify the client_max_body_size directive per container
 | `rap.rap_name`             | If `RAP_NAME` is specified for a RAP instance only container with label value matching `RAP_NAME` value will be publish
+| `rap.rate_limit`           | Requests per client IP for this host, e.g. `10r/s`, `600r/m` or `off`. Default : `RATE_LIMIT`
+| `rap.rate_burst`           | Requests a client may burst above the rate before getting `429`. Default : `RATE_BURST`
+| `rap.conn_limit`           | Concurrent connections per client IP, or `off`. Default : `CONN_LIMIT`
+| `rap.waf`                  | ModSecurity/OWASP CRS for this host: `on`, `detect` (log only) or `off`. Default : `WAF`
+| `rap.security_headers`     | `off` to drop the `X-Content-Type-Options`, `X-Frame-Options` and `Referrer-Policy` headers. Default : `SECURITY_HEADERS`
 
 Label values are validated before they are written into the nginx configuration:
 hostnames must be valid DNS names, ports must be numeric, and free-text values
@@ -83,6 +88,14 @@ whitespace, quotes, `;`, `{`, `}` or `#`. A service with an invalid value is ski
 | `RAP_NAME` 	     | If specify RAP will only publish service with `rap.rap_name = RAP_NAME`
 | `ACME_INTERNAL` 	 | Enable passing ACME request to another RAP instance ( check PR #48)
 | `LETSENCRYPT_DELAY` | Seconds to wait before contacting Let's Encrypt after the host list changed ( Default : `10` )
+| `RATE_LIMIT`       | Requests per client IP allowed on every host, e.g. `30r/s`, `600r/m` or `off` ( Default : `30r/s` )
+| `RATE_BURST`       | Burst allowance above `RATE_LIMIT` before `429 Too Many Requests` ( Default : `60` )
+| `CONN_LIMIT`       | Concurrent connections per client IP, or `off` ( Default : `100` )
+| `REAL_IP_FROM`     | Comma-separated IPs/CIDRs of trusted upstream proxies or CDNs; their `X-Forwarded-For` becomes the client IP for limits, logs and the WAF
+| `WAF`              | Web application firewall mode for every host: `on`, `detect` (log only) or `off` ( Default : `detect` )
+| `WAF_PARANOIA`     | OWASP CRS paranoia level 1-4; higher = stricter, more false positives ( Default : `1` )
+| `WAF_ANOMALY_INBOUND` / `WAF_ANOMALY_OUTBOUND` | CRS anomaly score thresholds ( Default : `5` / `4` )
+| `SECURITY_HEADERS` | `off` to disable the default browser hardening headers ( Default : `on` )
 | `TZ`               | Time zone for cron and log timestamps ( Default : `UTC` )
 
 #### Quick Summary of interesting volume to mount.
@@ -159,7 +172,7 @@ This would yield 3 different server/upstream configurations...
 
 If needed you can use Rancher-Active-Proxy to listen for different ports.
 
-`docker run -d -p 8081:8081 -p 81:81  ghcr.io/fflo/rancher-active-proxy`
+`docker run -d -p 8081:8081 -p 81:81  fflo/rancher-active-proxy`
 
 In this case, you can specify on which port Rancher Active Proxy should listen for a specific hostname :
 
@@ -176,7 +189,7 @@ If you are not using port `80` and `443` at all you won't be able to use Let's E
 
 Using environmental value `SPECIFIC_HOST` you can limit Rancher Active Proxy to containers running on a single host.
 
-Just start Rancher Active Proxy like that : `docker run -d -p 80:80 -e SPECIFIC_HOST=Hostnameofthehost ghcr.io/fflo/rancher-active-proxy`
+Just start Rancher Active Proxy like that : `docker run -d -p 80:80 -e SPECIFIC_HOST=Hostnameofthehost fflo/rancher-active-proxy`
 
 ### Remove Script
 
@@ -198,7 +211,7 @@ The file should use the suffix `_server`.
 
 For example, if you have a virtual host named `app.example.com` and you have configured a proxy_cache `my-cache` in another custom file, you could tell it to use a proxy cache as follows:
 
-    $ docker run -d -p 80:80 -p 443:443 -v /path/to/vhost.d:/etc/nginx/vhost.d:ro ghcr.io/fflo/rancher-active-proxy
+    $ docker run -d -p 80:80 -p 443:443 -v /path/to/vhost.d:/etc/nginx/vhost.d:ro fflo/rancher-active-proxy
 
 You should therefore have a file `app.example.com_server` in the `/etc/nginx/vhost.d` folder that contains the whole server block you want to use :
 
@@ -255,7 +268,7 @@ Your backend container should than listen on a port rather than a socket and exp
 
 To set the default host for nginx use the env var `DEFAULT_HOST=foo.bar.com` for example :
 
-    $ docker run -d -p 80:80 -e DEFAULT_HOST=foo.bar.com ghcr.io/fflo/rancher-active-proxy
+    $ docker run -d -p 80:80 -e DEFAULT_HOST=foo.bar.com fflo/rancher-active-proxy
 
 ### SSL Support
 
@@ -264,7 +277,7 @@ or optionally specifying a cert name (for SNI) as an environment variable.
 
 To enable SSL:
 
-    $ docker run -d -p 80:80 -p 443:443 -v /path/to/certs:/etc/nginx/certs  ghcr.io/fflo/rancher-active-proxy
+    $ docker run -d -p 80:80 -p 443:443 -v /path/to/certs:/etc/nginx/certs  fflo/rancher-active-proxy
 
 The contents of `/path/to/certs` should contain the certificates and private keys for any virtual
 hosts in use.  The certificate and keys should be named after the virtual host with a `.crt` and
@@ -332,7 +345,7 @@ In order to be able to secure your virtual host, you have to create a file named
 $ docker run -d -p 80:80 -p 443:443 \
     -v /path/to/htpasswd:/etc/nginx/htpasswd \
     -v /path/to/certs:/etc/nginx/certs \
-    ghcr.io/fflo/rancher-active-proxy
+    fflo/rancher-active-proxy
 ```
 
 You'll need apache2-utils on the machine where you plan to create the htpasswd file.
@@ -378,7 +391,7 @@ To add settings on a proxy-wide basis, add your configuration file under `/etc/n
 This can be done in a derived image by creating the file in a `RUN` command or by `COPY`ing the file into `conf.d`:
 
 ```Dockerfile
-FROM ghcr.io/fflo/rancher-active-proxy
+FROM fflo/rancher-active-proxy
 RUN { \
       echo 'server_tokens off;'; \
       echo 'client_max_body_size 100m;'; \
@@ -387,7 +400,7 @@ RUN { \
 
 Or it can be done by mounting in your custom configuration in your `docker run` command:
 
-    $ docker run -d -p 80:80 -p 443:443 -v /path/to/my_proxy.conf:/etc/nginx/conf.d/my_proxy.conf:ro ghcr.io/fflo/rancher-active-proxy
+    $ docker run -d -p 80:80 -p 443:443 -v /path/to/my_proxy.conf:/etc/nginx/conf.d/my_proxy.conf:ro fflo/rancher-active-proxy
 
 ### Per-VIRTUAL_HOST
 
@@ -397,7 +410,7 @@ In order to allow virtual hosts to be dynamically configured as backends are add
 
 For example, if you have a virtual host named `app.example.com`, you could provide a custom configuration for that host as follows:
 
-    $ docker run -d -p 80:80 -p 443:443 -v /path/to/vhost.d:/etc/nginx/vhost.d:ro ghcr.io/fflo/rancher-active-proxy
+    $ docker run -d -p 80:80 -p 443:443 -v /path/to/vhost.d:/etc/nginx/vhost.d:ro fflo/rancher-active-proxy
     $ { echo 'server_tokens off;'; echo 'client_max_body_size 100m;'; } > /path/to/vhost.d/app.example.com
 
 If you are using multiple hostnames for a single container (e.g. `rap.host=example.com,www.example.com`), the virtual host configuration file must exist for each hostname. If you would like to use the same configuration for multiple virtual host names, you can use a symlink:
@@ -417,7 +430,7 @@ just like the previous section except with the suffix `_location`.
 
 For example, if you have a virtual host named `app.example.com` and you have configured a proxy_cache `my-cache` in another custom file, you could tell it to use a proxy cache as follows:
 
-    $ docker run -d -p 80:80 -p 443:443 -v /path/to/vhost.d:/etc/nginx/vhost.d:ro ghcr.io/fflo/rancher-active-proxy
+    $ docker run -d -p 80:80 -p 443:443 -v /path/to/vhost.d:/etc/nginx/vhost.d:ro fflo/rancher-active-proxy
     $ { echo 'proxy_cache my-cache;'; echo 'proxy_cache_valid  200 302  60m;'; echo 'proxy_cache_valid  404 1m;' } > /path/to/vhost.d/app.example.com_location
 
 If you are using multiple hostnames for a single container (e.g. `rap.host=example.com,www.example.com`), the virtual host configuration file must exist for each hostname. If you would like to use the same configuration for multiple virtual host names, you can use a symlink:
@@ -430,16 +443,72 @@ If you are using multiple hostnames for a single container (e.g. `rap.host=examp
 If you want most of your virtual hosts to use a default single `location` block configuration and then override on a few specific ones, add those settings to the `/etc/nginx/vhost.d/default_location` file. This file
 will be used on any virtual host which does not have a `/etc/nginx/vhost.d/{rap.host}` file associated with it.
 
+## Flood (DoS) protection
+
+Every generated host gets nginx `limit_req` / `limit_conn` rules keyed on the client IP:
+by default 30 requests per second with a burst of 60, and at most 100 concurrent connections.
+Clients above that get `429 Too Many Requests` (logged at `warn` level in the nginx error log).
+Tune proxy-wide with `RATE_LIMIT`, `RATE_BURST`, `CONN_LIMIT` or per host with `rap.rate_limit`,
+`rap.rate_burst`, `rap.conn_limit`; `off` disables a limit. Slow-client (slowloris) and oversized
+header probes are cut off by short `client_*_timeout`s and small header buffers, and HTTP/2
+streams per connection are capped (`/etc/nginx/conf.d/00-security.conf`).
+
+If the proxy sits behind a CDN or another load balancer, set `REAL_IP_FROM` to that proxy's
+address ranges; otherwise every request would appear to come from the CDN and share one limit.
+
+A reverse proxy can only absorb application-layer floods. Volumetric attacks that saturate the
+host's uplink must be handled upstream (your hosting provider, a CDN, or a firewall in front of
+the Rancher hosts).
+
+## Web application firewall (ModSecurity + OWASP CRS)
+
+The image ships ModSecurity v3 with the [OWASP Core Rule Set](https://coreruleset.org/) and
+evaluates every request against it (SQL injection, XSS, path traversal, scanner signatures, ...).
+The rule set is loaded once; each `rap.host` runs in one of three modes:
+
+| Mode     | Effect |
+| -------- | ------ |
+| `detect` | **default** — matching requests are logged (JSON audit record on stdout) but still proxied |
+| `on`     | matching requests are blocked with `403` |
+| `off`    | ModSecurity is not run for this host |
+
+Roll it out by watching `docker logs` for a while in `detect` mode, adding exclusions for
+legitimate false positives, and then switching the proxy (`WAF=on`) or individual hosts
+(`rap.waf=on`) to blocking. Let's Encrypt challenge requests are never inspected.
+
+Exclusions live in the `/etc/nginx/vhost.d` volume as plain ModSecurity rule files:
+
+| File                               | Scope |
+| ---------------------------------- | ----- |
+| `vhost.d/default_modsec_before`    | proxy-wide, loaded before the CRS rules (e.g. `SecRuleRemoveById`, `ctl:ruleRemoveTargetById`) |
+| `vhost.d/default_modsec`           | proxy-wide, loaded after the CRS rules |
+| `vhost.d/<rap.host>_modsec`        | only for that host |
+
+Example `vhost.d/wiki.example.com_modsec` for an application that legitimately posts HTML:
+
+```
+SecRuleRemoveById 941100 941110 941160
+SecRule REQUEST_URI "@beginsWith /api/upload" "id:10001,phase:1,pass,nolog,ctl:ruleEngine=Off"
+```
+
+`WAF_PARANOIA` (1-4) and the anomaly thresholds follow the CRS documentation; level 1 is right for
+almost everybody. The engine configuration is `/etc/modsecurity.d/modsecurity.conf` in the image.
+
 ## Building and upgrading
 
 ```sh
 docker build -t rancher-active-proxy:local .
 ```
 
-The build compiles `rancher-gen` and `forego` from pinned, checksum-verified Go modules in a
-builder stage and copies the static binaries into `nginx:1.30-alpine`. Nothing is downloaded
-from GitLab or GitHub release pages at build time. Tags are built by GitHub Actions
-(`.github/workflows/build.yml`), smoke-tested and scanned with Trivy.
+The build compiles `rancher-gen` and `forego` from pinned, checksum-verified Go modules, and
+libmodsecurity plus its nginx connector against the exact nginx version of the runtime image
+(`--with-compat`, the same recipe the OWASP CRS container image uses), then copies the results
+into `nginx:1.30-alpine`. The CRS release tarball is GPG-verified. Expect the ModSecurity stage to
+take several minutes on first build; it is cached afterwards. On an Apple Silicon Mac build with
+`--platform linux/amd64` for the Rancher hosts (slow under emulation) or simply push to GitHub
+and let the workflow build it natively. Tags and `master` are built by GitHub Actions
+(`.github/workflows/build.yml`), smoke-tested, scanned with Trivy and pushed to Docker Hub; the
+workflow needs the repository secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`.
 
 Upgrading an existing stack from the `adi90x` image:
 
@@ -451,9 +520,15 @@ Upgrading an existing stack from the `adi90x` image:
    are validated; check the generated `/etc/nginx/conf.d/default.conf` for `# skipped` comments.
 5. nginx 1.30 serves HTTP/2 via `http2 on;`; if you ship your own `vhost.d/*_server` blocks, drop the
    deprecated `listen ... http2` form.
+6. The generated server blocks now carry their own `/.well-known/acme-challenge/` location; the
+   copy that older versions injected into `vhost.d/default` is removed automatically on start.
+7. Rate limiting and the WAF in `detect` mode are active by default. Watch the logs for `429`s and
+   ModSecurity audit records and tune `RATE_LIMIT` / `rap.waf` before switching the WAF to `on`.
+8. `add_header` directives in your own `vhost.d/*_location` files replace the proxy's default
+   security headers for that location (standard nginx inheritance); re-add the ones you want.
 
 ## Contributing
 
 Do not hesitate to send issues or pull requests !
 
-Automated Gitlab CI is used to build Rancher Active Proxy therefore send any pull request/issues to [Rancher Active Proxy on Gitlab.com](https://gitlab.com/ghcr.io/fflo/rancher-active-proxy/)
+Automated Gitlab CI is used to build Rancher Active Proxy therefore send any pull request/issues to [Rancher Active Proxy on Gitlab.com](https://gitlab.com/fflo/rancher-active-proxy/)

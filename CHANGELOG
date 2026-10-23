@@ -1,5 +1,18 @@
 ### Last Change ###
 
+23/10/26 : v1.1.0 - Flood protection and web application firewall.
+           * nginx limit_req/limit_conn per client IP on every host (RATE_LIMIT, RATE_BURST,
+             CONN_LIMIT; rap.rate_limit, rap.rate_burst, rap.conn_limit), 429 on excess.
+           * Slowloris/oversized-header hardening and HTTP/2 stream cap (conf.d/00-security.conf).
+           * REAL_IP_FROM: trust X-Forwarded-For from listed proxies/CDNs.
+           * ModSecurity 3.0.17 + OWASP CRS 4.30.0 compiled into the image; WAF=on|detect|off
+             proxy-wide and rap.waf per host (default detect); exclusions via vhost.d/*_modsec.
+           * Default X-Content-Type-Options / X-Frame-Options / Referrer-Policy headers (rap.security_headers=off).
+           * Generated server blocks carry the ACME location themselves; legacy injected copies in
+             vhost.d are removed on start.
+           * Images published to Docker Hub (fflo/rancher-active-proxy) by GitHub Actions.
+
+
 23/10/26 : v1.0.0 - Maintenance release: rebuild from source and harden.
            * rancher-gen source moved in-tree (rancher-gen/), built with Go modules; the GitLab
              artifact download that the old Dockerfile relied on no longer exists.

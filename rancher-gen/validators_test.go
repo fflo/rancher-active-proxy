@@ -28,6 +28,12 @@ func TestValidators(t *testing.T) {
 	if !isSafeToken("10m") || isSafeToken("10m;") || isSafeToken("a b") || isSafeToken("") {
 		t.Error("isSafeToken misbehaves")
 	}
+	if !isRate("10r/s") || !isRate("600r/m") || isRate("0r/s") || isRate("10r/h") || isRate("10r/s;") {
+		t.Error("isRate misbehaves")
+	}
+	if !isCIDR("10.0.0.0/8") || !isCIDR("192.168.1.1") || !isCIDR("fd00::/8") || isCIDR("10.0.0.0/33") || isCIDR("a;b") {
+		t.Error("isCIDR misbehaves")
+	}
 	if !isEmail("ops@example.com") || isEmail("foo") || isEmail("a@b") || isEmail("a@b.c d") {
 		t.Error("isEmail misbehaves")
 	}

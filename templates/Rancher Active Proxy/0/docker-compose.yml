@@ -1,12 +1,14 @@
 version: '2'
 services:
   Rancher-Active-Proxy:
-    image: ghcr.io/fflo/rancher-active-proxy:latest
+    image: fflo/rancher-active-proxy:latest
     environment:
       DEFAULT_HOST: ${DEFAULT_HOST}
       DEFAULT_EMAIL: ${DEFAULT_EMAIL}
       CRON: ${CRON}
       DEBUG: ${DEBUG}
+      RATE_LIMIT: ${RATE_LIMIT}
+      WAF: ${WAF}
       DEFAULT_PORT: ${DEFAULT_PORT}
     stdin_open: true
     volumes:

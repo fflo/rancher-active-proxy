@@ -41,7 +41,6 @@ issue_cert() {
     fi
 
     for dom in "${doms[@]}"; do
-        add_location_configuration "$dom"
         dargs+=(-d "$dom")
     done
 

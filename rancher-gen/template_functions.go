@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"path"
 	"reflect"
@@ -141,7 +142,21 @@ var (
 	numberRe    = regexp.MustCompile(`^[0-9]{1,10}$`)
 	safeTokenRe = regexp.MustCompile(`^[A-Za-z0-9._:-]{1,128}$`)
 	emailRe     = regexp.MustCompile(`^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$`)
+	rateRe      = regexp.MustCompile(`^[1-9][0-9]{0,5}r/[sm]$`)
 )
+
+// isRate reports whether s is an nginx limit_req rate such as "10r/s" or "600r/m".
+func isRate(s string) bool {
+	return rateRe.MatchString(s)
+}
+
+// isCIDR reports whether s is an IPv4/IPv6 address or CIDR network.
+func isCIDR(s string) bool {
+	if _, _, err := net.ParseCIDR(s); err == nil {
+		return true
+	}
+	return net.ParseIP(s) != nil
+}
 
 // isHostname reports whether s is a DNS name (optionally with a leading "*." wildcard).
 func isHostname(s string) bool {
@@ -215,6 +230,8 @@ func newFuncMap(ctx *TemplateContext) template.FuncMap {
 		"isHostname":         isHostname,
 		"isPort":             isPort,
 		"isNumber":           isNumber,
+		"isRate":             isRate,
+		"isCIDR":             isCIDR,
 		"isSafeToken":        isSafeToken,
 		"isEmail":            isEmail,
 		"concatenateUnique":  concatenateUnique,
