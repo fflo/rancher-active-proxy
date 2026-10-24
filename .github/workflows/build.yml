@@ -6,15 +6,19 @@ on:
     tags: ["v*"]
   pull_request:
   schedule:
-    - cron: "17 4 * * 1"   # weekly rebuild picks up nginx/certbot security updates
+    - cron: "17 4 * * 1"   # weekly rebuild picks up nginx/certbot/ModSecurity security updates
 
 permissions:
   contents: read
   security-events: write
 
-# Published to Docker Hub. Create an access token at hub.docker.com (Account settings ->
-# Personal access tokens, "Read & Write") and store it in the repository secrets as
-# DOCKERHUB_TOKEN together with DOCKERHUB_USERNAME.
+# Published to Docker Hub as a multi-architecture image. Create an access token at
+# hub.docker.com (Account settings -> Personal access tokens, "Read & Write") and store
+# it in the repository secrets as DOCKERHUB_TOKEN together with DOCKERHUB_USERNAME.
+#
+# Each architecture is compiled on a native runner (the ModSecurity stage is a long C++
+# build; under QEMU emulation it would take an hour per architecture) and pushed by
+# digest; the "manifest" job then merges them under the version tags.
 env:
   IMAGE: docker.io/fflo/rancher-active-proxy
 
@@ -37,11 +41,30 @@ jobs:
           go vet ./...
           go test ./...
 
-  image:
+  build:
     needs: lint
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+          # 32-bit ARM (Raspberry Pi 3 and older) has no native runner; enable only if you
+          # need it and accept a ~1 h emulated build:
+          # - platform: linux/arm/v7
+          #   runner: ubuntu-latest
+          #   emulate: true
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
+      - name: Platform slug
+        run: echo "slug=${PLATFORM//\//-}" >> "$GITHUB_ENV"
+        env:
+          PLATFORM: ${{ matrix.platform }}
+      - uses: docker/setup-qemu-action@v3
+        if: matrix.emulate == true
       - uses: docker/setup-buildx-action@v3
       - name: Log in to Docker Hub
         if: github.event_name != 'pull_request'
@@ -53,36 +76,84 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.IMAGE }}
-          tags: |
-            type=ref,event=branch
-            type=semver,pattern={{version}}
-            type=sha
-            type=raw,value=latest,enable={{is_default_branch}}
-      - name: Build (and push on non-PR)
+      - name: Build (push by digest on non-PR)
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64
-          push: ${{ github.event_name != 'pull_request' }}
-          load: ${{ github.event_name == 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
+          platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             VERSION=${{ steps.meta.outputs.version }}
             GIT_SHA=${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # PR: build into the local docker engine for the smoke test.
+          # push: publish an untagged image by digest; the manifest job tags it.
+          load: ${{ github.event_name == 'pull_request' }}
+          tags: ${{ github.event_name == 'pull_request' && format('{0}:pr-test', env.IMAGE) || '' }}
+          outputs: ${{ github.event_name != 'pull_request' && format('type=image,name={0},push-by-digest=true,name-canonical=true,push=true', env.IMAGE) || '' }}
+          cache-from: type=gha,scope=${{ env.slug }}
+          cache-to: type=gha,mode=max,scope=${{ env.slug }}
       - name: Smoke test
         if: github.event_name == 'pull_request'
         run: |
-          tag=$(echo "${{ steps.meta.outputs.tags }}" | head -n1)
-          docker run --rm --entrypoint rancher-gen "$tag" --version
-          docker run --rm --entrypoint nginx "$tag" -t
-          docker run --rm --entrypoint certbot "$tag" --version
+          img="${IMAGE}:pr-test"
+          docker run --rm --entrypoint rancher-gen "$img" --version
+          docker run --rm --entrypoint certbot "$img" --version
+          # nginx must start with the ModSecurity module and parse the full OWASP CRS rule set
+          docker run --rm --entrypoint sh "$img" -c '
+            WAF=on bash -c "source /app/functions.sh; configure_waf" &&
+            printf "modsecurity on;\nmodsecurity_rules_file /etc/modsecurity.d/setup.conf;\n" > /etc/nginx/conf.d/zz-waf-test.conf &&
+            nginx -t'
+      - name: Export digest
+        if: github.event_name != 'pull_request'
+        run: |
+          mkdir -p /tmp/digests
+          touch "/tmp/digests/${{ steps.build.outputs.digest }}"
+      - uses: actions/upload-artifact@v4
+        if: github.event_name != 'pull_request'
+        with:
+          name: digest-${{ env.slug }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  manifest:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digest-*
+          merge-multiple: true
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha
+            type=raw,value=latest,enable={{is_default_branch}}
+      - name: Create multi-arch manifest
+        working-directory: /tmp/digests
+        run: |
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf "${IMAGE}@sha256:%s " *)
+      - name: Inspect
+        run: docker buildx imagetools inspect "${IMAGE}:${{ steps.meta.outputs.version }}"
       - name: Trivy vulnerability scan
         uses: aquasecurity/trivy-action@0.28.0
         with:
-          image-ref: ${{ fromJSON(steps.meta.outputs.json).tags[0] }}
+          image-ref: ${{ env.IMAGE }}:${{ steps.meta.outputs.version }}
           format: sarif
           output: trivy.sarif
           severity: HIGH,CRITICAL

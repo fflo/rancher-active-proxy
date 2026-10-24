@@ -504,11 +504,17 @@ The build compiles `rancher-gen` and `forego` from pinned, checksum-verified Go 
 libmodsecurity plus its nginx connector against the exact nginx version of the runtime image
 (`--with-compat`, the same recipe the OWASP CRS container image uses), then copies the results
 into `nginx:1.30-alpine`. The CRS release tarball is GPG-verified. Expect the ModSecurity stage to
-take several minutes on first build; it is cached afterwards. On an Apple Silicon Mac build with
-`--platform linux/amd64` for the Rancher hosts (slow under emulation) or simply push to GitHub
-and let the workflow build it natively. Tags and `master` are built by GitHub Actions
-(`.github/workflows/build.yml`), smoke-tested, scanned with Trivy and pushed to Docker Hub; the
-workflow needs the repository secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`.
+take several minutes on first build; it is cached afterwards. A local `docker build` produces an
+image for the machine you run it on (so on an Apple Silicon Mac add `--platform linux/amd64` to get
+one for x86 Rancher hosts; that is slow under emulation).
+
+The published image is **multi-architecture** (`linux/amd64` and `linux/arm64`): GitHub Actions
+(`.github/workflows/build.yml`) compiles each architecture on a native runner, smoke-tests it,
+merges both into one manifest under the version tags, scans it with Trivy and pushes it to Docker
+Hub, so `docker pull fflo/rancher-active-proxy` works unchanged on x86 servers, ARM servers,
+Raspberry Pi 4/5 and Apple Silicon. 32-bit ARM can be enabled in the workflow matrix at the cost
+of an emulated build. The workflow needs the repository secrets `DOCKERHUB_USERNAME` and
+`DOCKERHUB_TOKEN`. Tags: `latest` (master), `1.2.3` and `1.2` (from git tag `v1.2.3`), `sha-…`.
 
 Upgrading an existing stack from the `adi90x` image:
 

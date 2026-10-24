@@ -1,5 +1,9 @@
 ### Last Change ###
 
+24/10/26 : v1.1.1 - Multi-architecture image (linux/amd64 + linux/arm64), built natively per
+           architecture by GitHub Actions and merged into one manifest; major.minor tags.
+
+
 23/10/26 : v1.1.0 - Flood protection and web application firewall.
            * nginx limit_req/limit_conn per client IP on every host (RATE_LIMIT, RATE_BURST,
              CONN_LIMIT; rap.rate_limit, rap.rate_burst, rap.conn_limit), 429 on excess.
