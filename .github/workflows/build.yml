@@ -151,9 +151,14 @@ jobs:
             $(printf "${IMAGE}@sha256:%s " *)
       - name: Inspect
         run: docker buildx imagetools inspect "${IMAGE}:${{ steps.meta.outputs.version }}"
+      # The image is already published at this point; a scanner hiccup (download
+      # failure, DB outage) must not fail the release. Findings still land in the
+      # Security -> Code scanning tab whenever the scan runs.
       - name: Trivy vulnerability scan
         uses: aquasecurity/trivy-action@0.35.0
+        continue-on-error: true
         with:
+          version: v0.69.3
           image-ref: ${{ env.IMAGE }}:${{ steps.meta.outputs.version }}
           format: sarif
           output: trivy.sarif
