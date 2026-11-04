@@ -151,14 +151,14 @@ jobs:
       - name: Inspect
         run: docker buildx imagetools inspect "${IMAGE}:${{ steps.meta.outputs.version }}"
       - name: Trivy vulnerability scan
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.35.0
         with:
           image-ref: ${{ env.IMAGE }}:${{ steps.meta.outputs.version }}
           format: sarif
           output: trivy.sarif
           severity: HIGH,CRITICAL
           ignore-unfixed: true
-      - uses: github/codeql-action/upload-sarif@v3
+      - uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: trivy.sarif
