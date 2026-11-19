@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1
 
 ARG GO_IMAGE=golang:1.25-alpine
-ARG NGINX_IMAGE=nginx:1.30-alpine
+# Pinned to the patch release: 1.30.7 fixes the NGINX2Root advisories (CVE-2026-123007 et al.)
+ARG NGINX_IMAGE=nginx:1.30.7-alpine
 ARG FOREGO_VERSION=v0.18.8
 # Web application firewall: libmodsecurity v3, its nginx connector and the OWASP Core Rule Set.
 ARG MODSEC_VERSION=3.0.17

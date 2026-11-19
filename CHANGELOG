@@ -1,5 +1,12 @@
 ### Last Change ###
 
+19/11/26 : v1.1.2 - Security: nginx 1.30.7 (pinned) closes the NGINX2Root advisories
+           CVE-2026-113425, -118899, -120967, -120993, -121810, -123007, -123633, -123634,
+           -123640, -125283. Of these, CVE-2026-123007/-123633 (HTTP/2, pre-auth) and
+           CVE-2026-118899 (TLS 1.3 body read) affected this image. Workflow gained a manual
+           trigger and always re-pulls base images.
+
+
 24/10/26 : v1.1.1 - Multi-architecture image (linux/amd64 + linux/arm64), built natively per
            architecture by GitHub Actions and merged into one manifest; major.minor tags.
 

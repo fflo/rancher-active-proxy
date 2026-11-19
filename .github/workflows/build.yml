@@ -7,6 +7,7 @@ on:
   pull_request:
   schedule:
     - cron: "17 4 * * 1"   # weekly rebuild picks up nginx/certbot/ModSecurity security updates
+  workflow_dispatch:       # Actions tab -> build -> "Run workflow" for an immediate rebuild
 
 permissions:
   contents: read
@@ -82,6 +83,7 @@ jobs:
         with:
           context: .
           platforms: ${{ matrix.platform }}
+          pull: true   # always re-resolve base image tags (security releases)
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             VERSION=${{ steps.meta.outputs.version }}
